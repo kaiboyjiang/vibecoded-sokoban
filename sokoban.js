@@ -40,7 +40,10 @@
 
   let colors = {};
   let progress = loadProgress();
-  let levelIndex = Math.min(progress.current || 0, RANDOM);
+  // Progress saved before levelCount existed came from the 32-level version.
+  const savedCount = progress.levelCount ?? 32;
+  let levelIndex = (progress.current || 0) >= savedCount ? RANDOM : progress.current || 0;
+  progress.levelCount = RANDOM;
   let state = null;
   let generating = null;
   let genId = 0;

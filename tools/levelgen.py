@@ -16,6 +16,7 @@ import random
 import re
 import sys
 from collections import deque
+from functools import partial
 from multiprocessing import Pool
 from pathlib import Path
 
@@ -212,18 +213,18 @@ def to_rows(floor, w, h, goals, boxes, player):
     return [r[pad:] for r in rows]
 
 
-def generate_one(seed):
+def generate_one(seed, w_range=(7, 11), h_range=(7, 10), box_counts=(3, 3, 4, 4, 4, 5, 5, 6), limit=400_000):
     rng = random.Random(seed)
-    w, h = rng.randint(7, 11), rng.randint(7, 10)
+    w, h = rng.randint(*w_range), rng.randint(*h_range)
     cells = random_room(rng, w, h)
     if not cells or len(cells) < 18:
         return None
     floor = {y * w + x for x, y in cells}
-    nboxes = rng.choice([3, 3, 4, 4, 4, 5, 5, 6])
+    nboxes = rng.choice(box_counts)
     if len(floor) < nboxes * 4 + 6:
         return None
     goals = set(rng.sample(sorted(floor), nboxes))
-    deepest = reverse_search(floor, w, goals, limit=400_000)
+    deepest = reverse_search(floor, w, goals, limit=limit)
     if not deepest or deepest[0] < 8:
         return None
     _, states = deepest
@@ -274,12 +275,19 @@ def main():
     g = sub.add_parser("generate")
     g.add_argument("-n", type=int, default=200, help="number of seeds to try")
     g.add_argument("--seed", type=int, default=1)
+    g.add_argument("--width", type=int, nargs=2, default=(7, 11), metavar=("MIN", "MAX"), help="room width range")
+    g.add_argument("--height", type=int, nargs=2, default=(7, 10), metavar=("MIN", "MAX"), help="room height range")
+    g.add_argument("--boxes", type=int, nargs="+", default=(3, 3, 4, 4, 4, 5, 5, 6), help="box counts to pick from")
+    g.add_argument("--limit", type=int, default=400_000, help="max states in the reverse search")
+    g.add_argument("--min-pushes", type=int, default=0, help="only print levels needing at least this many pushes")
     args = ap.parse_args()
     if args.cmd == "check":
         sys.exit(0 if check() else 1)
+    gen = partial(generate_one, w_range=tuple(args.width), h_range=tuple(args.height),
+                  box_counts=tuple(args.boxes), limit=args.limit)
     with Pool() as pool:
-        for result in pool.imap_unordered(generate_one, range(args.seed, args.seed + args.n)):
-            if result:
+        for result in pool.imap_unordered(gen, range(args.seed, args.seed + args.n)):
+            if result and result["pushes"] >= args.min_pushes:
                 print(json.dumps(result), flush=True)
 
 
